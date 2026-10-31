@@ -1,0 +1,6 @@
+{"id":1,"method":"Browser.getVersion"}
+{"id":2,"method":"Target.createTarget","params":{"url":"https://example.com"}}
+{"id":3,"method":"Emulation.setEmulatedMedia","params":{"features":[{"name":"prefers-color-scheme","value":"dark"}]}}
+{"id":4,"method":"Page.navigate","params":{"url":"https://example.com"}}
+{"id":5,"method":"Emulation.setTouchEmulationEnabled","params":{"enabled":true,"maxTouchPoints":5}}
+{"id":6,"method":"Page.captureScreenshot","params":{"format":"png"}}

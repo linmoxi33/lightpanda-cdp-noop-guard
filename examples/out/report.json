@@ -1,0 +1,38 @@
+{
+  "distinct_methods": 6,
+  "error_hits": 2,
+  "hits": [
+    {
+      "count": 1,
+      "evidence": "// TODO: noop method",
+      "first_line": 3,
+      "method": "Emulation.setEmulatedMedia",
+      "note": "media/features are never parsed; prefers-color-scheme and print emulation do nothing.",
+      "source_url": "https://github.com/lightpanda-io/browser/blob/315df53123a3bf02d5f17b24386bbb73b59945c4/src/server/cdp/domains/emulation.zig#L62",
+      "status": "noop"
+    },
+    {
+      "count": 1,
+      "evidence": "// TODO: noop method",
+      "first_line": 5,
+      "method": "Emulation.setTouchEmulationEnabled",
+      "note": "returns success without enabling touch; maxTouchPoints stays untouched.",
+      "source_url": "https://github.com/lightpanda-io/browser/blob/315df53123a3bf02d5f17b24386bbb73b59945c4/src/server/cdp/domains/emulation.zig#L136",
+      "status": "noop"
+    }
+  ],
+  "strict": false,
+  "tool": "lightpanda-cdp-noop-guard",
+  "total_calls": 6,
+  "unclassified_methods": [
+    "Browser.getVersion",
+    "Page.captureScreenshot",
+    "Page.navigate",
+    "Target.createTarget"
+  ],
+  "upstream": "lightpanda-io/browser",
+  "upstream_commit": "315df53123a3bf02d5f17b24386bbb73b59945c4",
+  "verdict": "fail",
+  "version": "1.0.0",
+  "warning_hits": 0
+}

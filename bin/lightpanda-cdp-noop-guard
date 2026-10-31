@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+"""Audit a Chrome DevTools Protocol session trace for calls Lightpanda accepts but ignores."""
+import json
+import os
+import sys
+
+TOOL = "lightpanda-cdp-noop-guard"
+VERSION = "1.0.0"
+ERROR_STATUSES = {"noop"}
+WARN_STATUSES = {"partial", "conditional_noop"}
+
+
+class UsageError(Exception):
+    pass
+
+
+def default_manifest_path():
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "..", "data", "manifest.json")
+
+
+def load_manifest(path):
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except OSError as exc:
+        raise UsageError("cannot read manifest %s: %s" % (path, exc))
+    except json.JSONDecodeError as exc:
+        raise UsageError("manifest is not valid JSON: %s" % exc)
+    if not isinstance(data, dict) or not isinstance(data.get("methods"), dict):
+        raise UsageError("manifest is missing a 'methods' object")
+    return data
+
+
+def load_calls(path):
+    """Return [(line_no, method)] from a JSON array or a JSONL trace."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError as exc:
+        raise UsageError("cannot read trace %s: %s" % (path, exc))
+    if not text.strip():
+        raise UsageError("trace is empty: %s" % path)
+    stripped = text.lstrip()
+    calls = []
+    if stripped.startswith("["):
+        try:
+            records = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise UsageError("trace is not valid JSON: %s" % exc)
+        if not isinstance(records, list):
+            raise UsageError("trace JSON must be an array of CDP messages")
+        for i, rec in enumerate(records, 1):
+            calls.append((i, extract_method(rec, "array item %d" % i)))
+    else:
+        for i, line in enumerate(text.splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise UsageError("trace line %d is not valid JSON: %s" % (i, exc))
+            calls.append((i, extract_method(rec, "line %d" % i)))
+    return calls
+
+
+def extract_method(rec, where):
+    if isinstance(rec, str):
+        return rec
+    if isinstance(rec, dict):
+        method = rec.get("method")
+        if method is None and isinstance(rec.get("message"), dict):
+            method = rec["message"].get("method")
+        if isinstance(method, str) and method:
+            return method
+        raise UsageError("%s has no string 'method' field" % where)
+    raise UsageError("%s is not a CDP message object" % where)
+
+
+def analyze(calls, manifest):
+    methods = manifest["methods"]
+    commit = manifest.get("commit", "HEAD")
+    hits = {}
+    unclassified = []
+    seen_unclassified = set()
+    for line_no, method in calls:
+        entry = methods.get(method)
+        if entry is None:
+            if method not in seen_unclassified:
+                seen_unclassified.add(method)
+                unclassified.append(method)
+            continue
+        hit = hits.get(method)
+        if hit is None:
+            hit = hits[method] = {
+                "method": method,
+                "status": entry["status"],
+                "count": 0,
+                "first_line": line_no,
+                "evidence": entry.get("evidence", ""),
+                "note": entry.get("note", ""),
+                "source_url": source_url(commit, entry),
+            }
+        hit["count"] += 1
+    ordered = sorted(hits.values(), key=lambda h: (-severity(h["status"]), h["first_line"]))
+    errors = [h for h in ordered if h["status"] in ERROR_STATUSES]
+    warnings = [h for h in ordered if h["status"] in WARN_STATUSES]
+    return {
+        "tool": TOOL,
+        "version": VERSION,
+        "upstream": manifest.get("upstream"),
+        "upstream_commit": commit,
+        "total_calls": len(calls),
+        "distinct_methods": len({m for _, m in calls}),
+        "hits": ordered,
+        "error_hits": len(errors),
+        "warning_hits": len(warnings),
+        "unclassified_methods": sorted(unclassified),
+    }
+
+
+def severity(status):
+    if status in ERROR_STATUSES:
+        return 2
+    if status in WARN_STATUSES:
+        return 1
+    return 0
+
+
+def source_url(commit, entry):
+    return "https://github.com/lightpanda-io/browser/blob/%s/%s#L%s" % (
+        commit, entry.get("file", ""), entry.get("line", 0))
+
+
+def render_text(report, trace_path):
+    out = []
+    out.append("%s v%s" % (report["tool"], report["version"]))
+    out.append("trace: %s" % trace_path)
+    out.append("upstream: %s @ %s" % (report["upstream"], report["upstream_commit"][:12]))
+    out.append("calls: %d (%d distinct)" % (report["total_calls"], report["distinct_methods"]))
+    out.append("")
+    if not report["hits"]:
+        out.append("PASS: no accepted-but-ignored CDP calls in this trace.")
+    else:
+        out.append("HITS: %d ignored method(s)" % len(report["hits"]))
+        for hit in report["hits"]:
+            tag = "ERROR" if hit["status"] in ERROR_STATUSES else "WARN "
+            out.append("  %s %-45s x%-3d line %-4d %s" % (
+                tag, hit["method"], hit["count"], hit["first_line"], hit["status"]))
+            out.append("        %s" % hit["note"])
+            out.append("        evidence: %s" % hit["evidence"])
+            out.append("        source:   %s" % hit["source_url"])
+    if report["unclassified_methods"]:
+        out.append("")
+        out.append("UNCLASSIFIED (not in manifest, not judged): %d" % len(report["unclassified_methods"]))
+        for method in report["unclassified_methods"][:20]:
+            out.append("  ? %s" % method)
+        if len(report["unclassified_methods"]) > 20:
+            out.append("  ... and %d more" % (len(report["unclassified_methods"]) - 20))
+    return "\n".join(out)
+
+
+def parse_args(argv):
+    opts = {"trace": None, "json": False, "strict": False, "manifest": None, "quiet": False}
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-h", "--help"):
+            print_usage()
+            raise SystemExit(0)
+        if arg == "--version":
+            print("%s %s" % (TOOL, VERSION))
+            raise SystemExit(0)
+        if arg == "--json":
+            opts["json"] = True
+        elif arg == "--strict":
+            opts["strict"] = True
+        elif arg == "--quiet":
+            opts["quiet"] = True
+        elif arg == "--manifest":
+            i += 1
+            if i >= len(argv):
+                raise UsageError("--manifest needs a path")
+            opts["manifest"] = argv[i]
+        elif arg.startswith("-"):
+            raise UsageError("unknown option: %s" % arg)
+        elif opts["trace"] is None:
+            opts["trace"] = arg
+        else:
+            raise UsageError("unexpected extra argument: %s" % arg)
+        i += 1
+    if opts["trace"] is None:
+        raise UsageError("missing TRACE argument")
+    return opts
+
+
+def print_usage():
+    print("usage: %s TRACE [--json] [--strict] [--manifest PATH] [--quiet]" % TOOL)
+    print("")
+    print("TRACE is a CDP session trace: a JSON array of messages or JSONL.")
+    print("exit 0 = clean, 1 = ignored calls found, 2 = usage/input error")
+
+
+def main(argv):
+    try:
+        opts = parse_args(argv)
+        manifest = load_manifest(opts["manifest"] or default_manifest_path())
+        calls = load_calls(opts["trace"])
+        report = analyze(calls, manifest)
+    except UsageError as exc:
+        sys.stderr.write("error: %s\n" % exc)
+        sys.stderr.write("run with --help for usage\n")
+        return 2
+    failed = report["error_hits"] > 0 or (opts["strict"] and report["warning_hits"] > 0)
+    report["verdict"] = "fail" if failed else "pass"
+    report["strict"] = opts["strict"]
+    if opts["json"]:
+        json.dump(report, sys.stdout, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
+    elif not opts["quiet"]:
+        print(render_text(report, opts["trace"]))
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

@@ -1,0 +1,20 @@
+lightpanda-cdp-noop-guard v1.0.0
+trace: examples/in/playwright-darkmode.jsonl
+upstream: lightpanda-io/browser @ 315df53123a3
+calls: 6 (6 distinct)
+
+HITS: 2 ignored method(s)
+  ERROR Emulation.setEmulatedMedia                    x1   line 3    noop
+        media/features are never parsed; prefers-color-scheme and print emulation do nothing.
+        evidence: // TODO: noop method
+        source:   https://github.com/lightpanda-io/browser/blob/315df53123a3bf02d5f17b24386bbb73b59945c4/src/server/cdp/domains/emulation.zig#L62
+  ERROR Emulation.setTouchEmulationEnabled            x1   line 5    noop
+        returns success without enabling touch; maxTouchPoints stays untouched.
+        evidence: // TODO: noop method
+        source:   https://github.com/lightpanda-io/browser/blob/315df53123a3bf02d5f17b24386bbb73b59945c4/src/server/cdp/domains/emulation.zig#L136
+
+UNCLASSIFIED (not in manifest, not judged): 4
+  ? Browser.getVersion
+  ? Page.captureScreenshot
+  ? Page.navigate
+  ? Target.createTarget

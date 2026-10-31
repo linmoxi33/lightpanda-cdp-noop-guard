@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+vendor/
+*.zip
+*.tar.gz
+*.tgz
+*.7z
+.DS_Store

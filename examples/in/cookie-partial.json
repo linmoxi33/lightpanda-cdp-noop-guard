@@ -1,0 +1,5 @@
+[
+  {"id": 1, "method": "Network.enable"},
+  {"id": 2, "method": "Storage.setCookies", "params": {"cookies": [{"name": "sid", "value": "x", "priority": "High"}]}},
+  {"id": 3, "method": "Browser.setDownloadBehavior", "params": {"behavior": "allow", "downloadPath": "/tmp/dl"}}
+]

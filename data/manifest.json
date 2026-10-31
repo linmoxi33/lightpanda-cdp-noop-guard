@@ -1,0 +1,58 @@
+{
+  "upstream": "lightpanda-io/browser",
+  "commit": "315df53123a3bf02d5f17b24386bbb73b59945c4",
+  "commit_date": "2026-10-31T06:33:58Z",
+  "source_root": "src/server/cdp/domains",
+  "note": "status=noop means the method is accepted and answers success without doing anything. status=partial means it runs but documented parameters are discarded. status=conditional_noop means it silently succeeds only in some states.",
+  "methods": {
+    "Emulation.setEmulatedMedia": {
+      "status": "noop",
+      "file": "src/server/cdp/domains/emulation.zig",
+      "line": 62,
+      "evidence": "// TODO: noop method",
+      "note": "media/features are never parsed; prefers-color-scheme and print emulation do nothing."
+    },
+    "Emulation.setFocusEmulationEnabled": {
+      "status": "noop",
+      "file": "src/server/cdp/domains/emulation.zig",
+      "line": 75,
+      "evidence": "// TODO: noop method",
+      "note": "enabled is never parsed; the page keeps its normal focus behaviour."
+    },
+    "Emulation.setTouchEmulationEnabled": {
+      "status": "noop",
+      "file": "src/server/cdp/domains/emulation.zig",
+      "line": 136,
+      "evidence": "// TODO: noop method",
+      "note": "returns success without enabling touch; maxTouchPoints stays untouched."
+    },
+    "Browser.setWindowBounds": {
+      "status": "noop",
+      "file": "src/server/cdp/domains/browser.zig",
+      "line": 190,
+      "evidence": "// TODO: noop method",
+      "note": "window bounds are never applied; screenshot viewport stays as configured."
+    },
+    "Emulation.setDefaultBackgroundColorOverride": {
+      "status": "noop",
+      "file": "src/server/cdp/domains/emulation.zig",
+      "line": 57,
+      "evidence": "// Nothing is painted with a background.",
+      "note": "dispatched straight to sendResult(null); the colour is dropped."
+    },
+    "Browser.setDownloadBehavior": {
+      "status": "conditional_noop",
+      "file": "src/server/cdp/domains/browser.zig",
+      "line": 120,
+      "evidence": "treat it as a success no-op rather than erroring",
+      "note": "succeeds silently when no browser context exists yet; Playwright sends this during connect."
+    },
+    "Storage.setCookies": {
+      "status": "partial",
+      "file": "src/server/cdp/domains/storage.zig",
+      "line": 118,
+      "evidence": "Accepted and ignored, like Chrome's sameParty",
+      "note": "priority, sourceScheme, sourcePort and partitionKey are dropped when storing cookies."
+    }
+  }
+}
